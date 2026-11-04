@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE MAZE — A First-Person Horror Game</title>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050607;color:#e8e8e8;font-family:Consolas,monospace;touch-action:none;user-select:none;-webkit-user-select:none}
+  canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+  #hud{position:fixed;inset:0;pointer-events:none;text-shadow:0 2px 5px #000}
+  #top{position:absolute;top:20px;left:24px;font-size:13px;letter-spacing:2px;color:#c9c9c9}
+  #objective{position:absolute;top:20px;right:24px;text-align:right;font-size:13px;letter-spacing:1px;color:#ddd}
+  #prompt{position:absolute;bottom:13%;width:100%;text-align:center;font-size:14px;color:#eee;letter-spacing:2px}
+  #crosshair{position:absolute;left:50%;top:50%;width:5px;height:5px;border:1px solid #eee;border-radius:50%;transform:translate(-50%,-50%);opacity:.75}
+  #vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 25%,rgba(0,0,0,.35) 70%,rgba(0,0,0,.9) 125%)}
+  #noise{position:fixed;inset:0;pointer-events:none;opacity:.055;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E")}
+  .screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:5;text-align:center;padding:24px}
+  .panel{max-width:600px;border:1px solid #555;padding:42px 46px;background:rgba(7,9,10,.94);box-shadow:0 0 70px #000}
+  h1{font-size:clamp(42px,8vw,76px);letter-spacing:12px;margin:0 0 8px;font-weight:400;color:#eee}
+  .sub{letter-spacing:5px;color:#888;font-size:12px;margin-bottom:32px}
+  p{color:#aaa;line-height:1.7;font-size:14px}
+  button{margin-top:20px;background:#ddd;color:#090a0b;border:0;padding:14px 30px;font: bold 13px Consolas;letter-spacing:3px;cursor:pointer}
+  button:hover{background:#fff}
+  .small{font-size:11px;color:#666;margin-top:22px}
+  #map{position:fixed;right:22px;bottom:22px;width:150px;height:150px;opacity:.72;border:1px solid #777;background:#050607;display:none}
+  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none}
+  #mobile{display:block;position:fixed;inset:0;pointer-events:none;z-index:4}
+  #stickBase{position:absolute;left:22px;bottom:24px;width:116px;height:116px;border:2px solid rgba(255,255,255,.35);border-radius:50%;background:rgba(20,20,20,.28);pointer-events:auto;touch-action:none}
+  #stick{position:absolute;left:35px;top:35px;width:44px;height:44px;border-radius:50%;background:rgba(230,230,230,.55);border:1px solid rgba(255,255,255,.7)}
+  #turnBase{position:absolute;right:18px;bottom:24px;width:116px;height:116px;border:2px solid rgba(255,255,255,.35);border-radius:50%;background:rgba(20,20,20,.28);pointer-events:auto;touch-action:none}
+  #turnStick{position:absolute;left:35px;top:35px;width:44px;height:44px;border-radius:50%;background:rgba(230,230,230,.55);border:1px solid rgba(255,255,255,.7)}
+  .mobileBtn{position:absolute;right:22px;bottom:32px;width:76px;height:76px;border:1px solid rgba(255,255,255,.55);border-radius:50%;background:rgba(20,20,20,.4);color:#fff;font:12px Consolas;letter-spacing:1px;pointer-events:auto;touch-action:none}
+  #lookHint{position:absolute;right:24px;bottom:150px;color:rgba(255,255,255,.65);font-size:10px;letter-spacing:1px;text-align:right;pointer-events:none}
+  @media (pointer:coarse){#mobile{display:block}#top{top:10px;left:12px;font-size:10px}#objective{top:10px;right:12px;font-size:10px}#map{width:110px;height:110px;right:10px;bottom:150px}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud"><div id="top">THE MAZE // SECTOR 01</div><div id="objective">FIND THE KEY<br><span id="keyStatus" style="color:#888">KEY: MISSING</span></div><div id="crosshair"></div><div id="prompt"></div></div>
+<div id="vignette"></div><div id="noise"></div><canvas id="map" width="150" height="150"></canvas><div id="flash"></div>
+<div id="mobile">
+  <div id="stickBase"><div id="stick"></div></div>
+  <div id="turnBase" aria-label="Turn joystick"><div id="turnStick"></div></div>
+  <div id="lookHint">LEFT: MOVE<br>RIGHT: TURN</div>
+</div>
+<div class="screen" id="title"><div class="panel"><h1>THE MAZE</h1><div class="sub">YOU ARE NOT ALONE</div><p>You wake in a concrete maze beneath an abandoned building.<br>Find the brass key. Find the exit. Don't let it find you.</p><p><b>WASD</b> move &nbsp; <b>MOUSE</b> look &nbsp; <b>SHIFT</b> run<br><b>M</b> map &nbsp; <b>ESC</b> pause</p><button id="start">ENTER THE MAZE</button></div></div>
+<div class="screen" id="end" style="display:none"><div class="panel"><h1 id="endTitle">CAUGHT</h1><p id="endText">Something found you in the dark.</p><button id="again">TRY AGAIN</button></div></div>
+<script>
+(() => {
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const mapCanvas=document.getElementById('map'),mctx=mapCanvas.getContext('2d');
+const W=canvas.width=960,H=canvas.height=540;
+const MW=19,MH=19;
+let grid=[],player={x:1.5,y:1.5,a:0.15},monster={x:17.5,y:17.5,active:false,alert:0};
+let key={x:MW-2.5,y:1.5,got:false},exit={x:1.5,y:MH-2.5,wallX:0,wallY:0};
+let running=false,paused=false,won=false,dead=false,mapOn=false,keys={},last=0,elapsed=0,steps=0,shake=0;
+let joyId=null,turnId=null,joyX=0,joyY=0,turnX=0;
+let audioCtx=null,footstepClock=0,bobPhase=0,bobOffset=0;
+const FOV=Math.PI/3, depth=new Float32Array(W);
+const title=document.getElementById('title'),end=document.getElementById('end'),prompt=document.getElementById('prompt');
+const keyStatus=document.getElementById('keyStatus'),flash=document.getElementById('flash');
+function resize(){let d=Math.min(devicePixelRatio||1,1);let scale=Math.min(1,640/innerWidth,360/innerHeight);d=Math.min(d,scale);canvas.width=Math.max(320,Math.floor(innerWidth*d));canvas.height=Math.max(180,Math.floor(innerHeight*d));ctx.setTransform(1,0,0,1,0,0)}
+function initAudio(){
+ try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;audioCtx=audioCtx||new AC();if(audioCtx.state==='suspended')audioCtx.resume()}catch(e){}
+}
+function beep(freq,duration,volume=.035,type='square',endFreq=null){
+ if(!audioCtx)return;const now=audioCtx.currentTime,o=audioCtx.createOscillator(),g=audioCtx.createGain();
+ o.type=type;o.frequency.setValueAtTime(freq,now);if(endFreq)o.frequency.exponentialRampToValueAtTime(Math.max(1,endFreq),now+duration);
+ g.gain.setValueAtTime(volume,now);g.gain.exponentialRampToValueAtTime(.001,now+duration);
+ o.connect(g);g.connect(audioCtx.destination);o.start(now);o.stop(now+duration);
+}
+function playFootstep(){beep(105+Math.random()*35,.055,.025,'square');}
+function playDeath(){if(!audioCtx)return;beep(180,.55,.07,'sawtooth',28);setTimeout(()=>beep(65,.7,.06,'square',22),120);setTimeout(()=>beep(42,.45,.05,'triangle',18),260);}
+function enableTouchControls(){
+ const isTouch=('ontouchstart' in window) || (navigator.maxTouchPoints>0) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+ document.getElementById('mobile').style.display='block';
+}
+resize();addEventListener('resize',resize);enableTouchControls();
+window.addEventListener('orientationchange',function(){setTimeout(function(){resize();enableTouchControls();},250);});
+function carve(){
+ grid=Array.from({length:MH},(_,y)=>Array.from({length:MW},(_,x)=>(x===0||y===0||x===MW-1||y===MH-1)?1:1));
+ const stack=[[1,1]];grid[1][1]=0;
+ while(stack.length){let [x,y]=stack[stack.length-1],opts=[];
+  for(let [dx,dy] of [[0,-2],[2,0],[0,2],[-2,0]]){let nx=x+dx,ny=y+dy;if(nx>0&&ny>0&&nx<MW-1&&ny<MH-1&&grid[ny][nx]===1)opts.push([nx,ny,dx,dy])}
+  if(!opts.length){stack.pop();continue}
+  let [nx,ny,dx,dy]=opts[Math.floor(Math.random()*opts.length)];grid[y+dy/2][x+dx/2]=0;grid[ny][nx]=0;stack.push([nx,ny]);
+ }
+ // Open a few extra passages to make the maze less linear.
+ for(let i=0;i<18;i++){let x=2+Math.floor(Math.random()*(MW-4)),y=2+Math.floor(Math.random()*(MH-4));if(grid[y][x]&&((grid[y-1][x]===0&&grid[y+1][x]===0)||(grid[y][x-1]===0&&grid[y][x+1]===0)))grid[y][x]=0}
+}
+function reset(){carve();player={x:1.5,y:1.5,a:Math.PI/4};monster={x:17.5,y:17.5,active:false,alert:0};key={x:17.5,y:1.5,got:false};
+ // Pick a distant walkable tile with a neighbouring wall; the glowing doorway
+ // is placed on that wall and becomes visible only after the key is collected.
+ let candidates=[];
+ for(let y=2;y<MH-2;y++)for(let x=2;x<MW-2;x++){
+  if(grid[y][x]!==0||Math.hypot(x+.5-player.x,y+.5-player.y)<7||Math.hypot(x+.5-key.x,y+.5-key.y)<3)continue;
+  for(let [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(grid[y+dy][x+dx]===1)candidates.push({x:x+.5-dx*.43,y:y+.5-dy*.43,wallX:x+dx,wallY:y+dy,dx,dy});
+ }
+ exit=candidates.length?candidates[Math.floor(Math.random()*candidates.length)]:{x:1.5,y:17.5,wallX:1,wallY:17,dx:1,dy:0};
+ elapsed=0;footstepClock=0;bobPhase=0;bobOffset=0;steps=0;dead=won=false;end.style.display='none';keyStatus.textContent='KEY: MISSING';keyStatus.style.color='#888'}
+function wall(x,y){let ix=Math.floor(x),iy=Math.floor(y);return ix<0||iy<0||ix>=MW||iy>=MH||grid[iy][ix]===1}
+function blocked(x,y,r=.18){return wall(x-r,y-r)||wall(x+r,y-r)||wall(x-r,y+r)||wall(x+r,y+r)}
+function cast(angle){let sin=Math.sin(angle),cos=Math.cos(angle),dist=0,hit=0,side=0;while(dist<24){dist+=.025;let x=player.x+cos*dist,y=player.y+sin*dist;if(wall(x,y)){hit=1;side=(Math.floor(x)!==Math.floor(x-cos*.025))?0:1;break}}return {dist,side}}
+function draw(){
+ const w=canvas.width,h=canvas.height;
+ ctx.save();ctx.translate(0,bobOffset);
+ let sky=ctx.createLinearGradient(0,0,0,h/2);sky.addColorStop(0,'#080a0b');sky.addColorStop(1,'#242525');ctx.fillStyle=sky;ctx.fillRect(0,0,w,h/2);
+ let floor=ctx.createLinearGradient(0,h/2,0,h);floor.addColorStop(0,'#242322');floor.addColorStop(1,'#050505');ctx.fillStyle=floor;ctx.fillRect(0,h/2,w,h/2);
+ const strip=Math.max(1,Math.floor(w/480));
+ for(let sx=0;sx<w;sx+=strip){let a=player.a+(sx/w-.5)*FOV,r=cast(a),d=Math.max(.01,r.dist*Math.cos(a-player.a));depth[Math.floor(sx/strip)]=d;let wallH=Math.min(h*2,h/d*.83),top=h/2-wallH/2;
+  let tex=Math.abs(Math.sin((sx*.11)+Math.floor(d*2)*.7));let shade=Math.max(10,Math.min(115,125/(1+d*.24)));if(r.side)shade*=.72;shade*=.85+tex*.15;
+  ctx.fillStyle=`rgb(${shade*.78|0},${shade*.82|0},${shade*.8|0})`;ctx.fillRect(sx,top,strip+1,wallH);
+  // Damp concrete seams and occasional stains.
+  if((Math.floor(sx/strip)%47===0)&&wallH>10){ctx.fillStyle='rgba(0,0,0,.22)';ctx.fillRect(sx,top,2,wallH)}
+  ctx.fillStyle='rgba(0,0,0,.18)';ctx.fillRect(sx,top+wallH*.72,strip+1,Math.max(1,wallH*.015));
+ }
+ if(key.got)drawExit();
+ drawSprite(key.x,key.y,'key');
+ if(!key.got)drawKey();
+ drawMonster();
+ // flashlight falloff and vignette
+ let g=ctx.createRadialGradient(w/2,h*.53,10,w/2,h*.53,w*.65);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(.55,'rgba(0,0,0,.12)');g.addColorStop(1,'rgba(0,0,0,.8)');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+ if(shake>0){ctx.fillStyle=`rgba(120,0,0,${shake*.15})`;ctx.fillRect(0,0,w,h);shake=Math.max(0,shake-.015)}
+ ctx.restore();
+}
+function project(x,y){let dx=x-player.x,dy=y-player.y,dist=Math.hypot(dx,dy),ang=Math.atan2(dy,dx)-player.a;while(ang>Math.PI)ang-=Math.PI*2;while(ang<-Math.PI)ang+=Math.PI*2;return {dist,ang,sx:canvas.width/2+(ang/FOV)*canvas.width,scale:canvas.height/(dist*Math.cos(ang))}}
+function drawSprite(x,y,type){let p=project(x,y);if(Math.abs(p.ang)>FOV*.7||p.dist<.1)return;let z=Math.floor(p.sx/Math.max(1,canvas.width/480));if(depth[Math.max(0,Math.min(depth.length-1,z))]<p.dist-.2)return}
+function drawKey(){let p=project(key.x,key.y);if(Math.abs(p.ang)>FOV/2||p.dist<.3)return;let size=Math.min(80,canvas.height/(p.dist*5)),x=p.sx,y=canvas.height/2+size*.4;ctx.save();ctx.translate(x,y);ctx.rotate(elapsed*1.5);ctx.strokeStyle='#d6aa43';ctx.lineWidth=Math.max(2,size*.09);ctx.beginPath();ctx.arc(0,-size*.22,size*.19,0,Math.PI*2);ctx.moveTo(0,-size*.03);ctx.lineTo(0,size*.45);ctx.lineTo(size*.2,size*.45);ctx.moveTo(0,size*.25);ctx.lineTo(size*.16,size*.25);ctx.stroke();ctx.restore()}
+function drawExit(){
+ // A bright, pixel-edged doorway anchored at the randomly chosen wall.
+ let p=project(exit.x,exit.y);if(Math.abs(p.ang)>FOV*.62||p.dist<.15)return;
+ let z=Math.floor(p.sx/Math.max(1,canvas.width/480));
+ if(depth[Math.max(0,Math.min(depth.length-1,z))]<p.dist-.25)return;
+ let size=Math.min(canvas.height*1.25,canvas.height/(p.dist*.9));
+ let pw=size*.43,ph=size*.82,x=p.sx,y=canvas.height/2;
+ ctx.save();ctx.translate(x,y);
+ ctx.shadowColor='#fff';ctx.shadowBlur=28;
+ let grad=ctx.createLinearGradient(-pw/2,0,pw/2,0);grad.addColorStop(0,'rgba(190,205,220,.35)');grad.addColorStop(.5,'rgba(255,255,255,.98)');grad.addColorStop(1,'rgba(190,205,220,.35)');
+ ctx.fillStyle=grad;ctx.fillRect(-pw/2,-ph*.5,pw,ph);
+ ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(2,size*.025);ctx.strokeRect(-pw/2,-ph*.5,pw,ph);
+ ctx.fillStyle='rgba(255,255,255,.35)';ctx.fillRect(-pw*.32,-ph*.42,pw*.64,ph*.84);
+ ctx.shadowBlur=0;ctx.restore();
+}
+function drawMonster(){if(!monster.active)return;let p=project(monster.x,monster.y);if(Math.abs(p.ang)>FOV*.7||p.dist<.1)return;let size=Math.min(canvas.height*1.4,canvas.height/(p.dist*.9));let x=p.sx,y=canvas.height/2;
+ let col=Math.max(0,1-p.dist/12);ctx.save();ctx.translate(x,y);
+ ctx.fillStyle=`rgba(3,4,5,${.96})`;ctx.beginPath();ctx.ellipse(0,-size*.15,size*.22,size*.39,0,0,Math.PI*2);ctx.fill();
+ ctx.beginPath();ctx.moveTo(-size*.2,-size*.35);ctx.lineTo(-size*.34,-size*.72);ctx.lineTo(-size*.1,-size*.48);ctx.lineTo(0,-size*.78);ctx.lineTo(size*.12,-size*.46);ctx.lineTo(size*.34,-size*.68);ctx.lineTo(size*.2,-size*.28);ctx.fill();
+ ctx.fillStyle=`rgba(220,225,220,${col})`;ctx.shadowColor='#fff';ctx.shadowBlur=18*col;ctx.fillRect(-size*.105,-size*.25,size*.055,size*.025);ctx.fillRect(size*.05,-size*.25,size*.055,size*.025);ctx.shadowBlur=0;
+ ctx.strokeStyle='rgba(0,0,0,.8)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-size*.12,-size*.03);ctx.quadraticCurveTo(0,size*.12,size*.13,-size*.03);ctx.stroke();ctx.restore();
+ if(p.dist<2.2){shake=.3;flash.style.opacity='.15';setTimeout(()=>flash.style.opacity='0',80)}
+}
+function update(dt){if(!running||paused||dead||won)return;elapsed+=dt;
+ let speed=(keys.Shift?3.15:2.05)*dt,turn=1.9*dt;
+ player.a += turnX * 2.25 * dt;
+ if(keys.ArrowLeft)player.a-=turn;if(keys.ArrowRight)player.a+=turn;
+ let f=Math.max(-1,Math.min(1,(keys.KeyW?1:0)-(keys.KeyS?1:0)-joyY)),s=Math.max(-1,Math.min(1,(keys.KeyD?1:0)-(keys.KeyA?1:0)+joyX));
+ let dx=(Math.cos(player.a)*f-Math.sin(player.a)*s)*speed,dy=(Math.sin(player.a)*f+Math.cos(player.a)*s)*speed;
+ if(!blocked(player.x+dx,player.y))player.x+=dx;if(!blocked(player.x,player.y+dy))player.y+=dy;
+ const moving=Math.abs(dx)+Math.abs(dy)>.001;
+ if(moving){
+  steps+=dt*(keys.Shift?1.8:1);
+  footstepClock+=dt;
+  const interval=keys.Shift?.27:.42;
+  if(footstepClock>=interval){playFootstep();footstepClock=0;monster.alert=Math.min(1,monster.alert+.16)}
+  bobPhase+=dt*(keys.Shift?13:9);bobOffset=Math.sin(bobPhase)* (keys.Shift?5:3.2);
+ }else{footstepClock=0;bobOffset+=(0-bobOffset)*Math.min(1,dt*10)}
+ if(!key.got&&Math.hypot(player.x-key.x,player.y-key.y)<.65){key.got=true;keyStatus.textContent='KEY: ACQUIRED';keyStatus.style.color='#d6aa43';prompt.textContent='THE EXIT HAS APPEARED';setTimeout(()=>prompt.textContent='',2400);monster.active=true;monster.alert=.4;prompt.textContent='YOU HEAR SOMETHING MOVING';setTimeout(()=>prompt.textContent='',2400)}
+ let targetDist=Math.hypot(player.x-monster.x,player.y-monster.y);
+ if(monster.active){monster.alert=Math.max(.12,monster.alert-dt*.018);let dxp=player.x-monster.x,dyp=player.y-monster.y,ang=Math.atan2(dyp,dxp);let ms=(.48+monster.alert*.65)*dt;
+  let nx=monster.x+Math.cos(ang)*ms,ny=monster.y+Math.sin(ang)*ms;if(!blocked(nx,monster.y,.22))monster.x=nx;if(!blocked(monster.x,ny,.22))monster.y=ny;
+  if(targetDist<.58){dead=true;playDeath();showEnd(false)}
+ }
+ if(key.got&&Math.hypot(player.x-exit.x,player.y-exit.y)<.62){won=true;showEnd(true)}
+}
+function showEnd(win){end.style.display='flex';document.getElementById('endTitle').textContent=win?'ESCAPED':'CAUGHT';document.getElementById('endText').textContent=win?'You found the way out. Behind you, something scratches at the door.':'The footsteps stop. Something is standing right behind you.';if(document.exitPointerLock)document.exitPointerLock()}
+function drawMap(){if(!mapOn)return;let s=mapCanvas.width/MW;mctx.fillStyle='#050607';mctx.fillRect(0,0,150,150);for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){mctx.fillStyle=grid[y][x]?'#777':'#17191a';mctx.fillRect(x*s,y*s,s-1,s-1)}mctx.fillStyle='#d6aa43';mctx.fillRect(key.x*s-2,key.y*s-2,4,4);mctx.fillStyle='#ddd';mctx.beginPath();mctx.arc(player.x*s,player.y*s,3,0,7);mctx.fill();mctx.strokeStyle='#ddd';mctx.beginPath();mctx.moveTo(player.x*s,player.y*s);mctx.lineTo((player.x+Math.cos(player.a)*1.4)*s,(player.y+Math.sin(player.a)*1.4)*s);mctx.stroke();if(monster.active){mctx.fillStyle='#d22';mctx.fillRect(monster.x*s-2,monster.y*s-2,4,4)}}
+function loop(t){let dt=Math.min(.05,(t-last)/1000||0);last=t;update(dt);draw();drawMap();requestAnimationFrame(loop)}
+document.getElementById('start').onclick=()=>{initAudio();reset();running=true;title.style.display='none';if(!('ontouchstart' in window))if(canvas.requestPointerLock)canvas.requestPointerLock()};
+document.getElementById('again').onclick=()=>{initAudio();reset();running=true;end.style.display='none';if(!('ontouchstart' in window))if(canvas.requestPointerLock)canvas.requestPointerLock()};
+document.addEventListener('pointerlockchange',()=>{if(document.pointerLockElement!==canvas&&running&&!dead&&!won)paused=true;else paused=false});
+document.addEventListener('mousemove',e=>{if(document.pointerLockElement===canvas&&!paused)player.a+=e.movementX*.0025});
+const mobile = document.getElementById('mobile'), stickBase=document.getElementById('stickBase'), stick=document.getElementById('stick');
+function setStick(e){const r=stickBase.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let dx=e.clientX-cx,dy=e.clientY-cy,len=Math.hypot(dx,dy),max=38;if(len>max){dx=dx/len*max;dy=dy/len*max}joyX=dx/max;joyY=dy/max;stick.style.transform=`translate(${dx}px,${dy}px)`}
+stickBase.addEventListener('touchstart',e=>{e.preventDefault();if(joyId===null){let t=e.changedTouches[0];joyId=t.identifier;setStick(t)}},{passive:false});
+stickBase.addEventListener('mousedown',e=>{joyId='mouse';setStick(e)});
+window.addEventListener('mousemove',e=>{if(joyId==='mouse')setStick(e)});
+window.addEventListener('mouseup',()=>{if(joyId==='mouse'){joyId=null;joyX=joyY=0;stick.style.transform='translate(0,0)'}});
+stickBase.addEventListener('touchmove',e=>{e.preventDefault();for(let i=0;i<e.changedTouches.length;i++){let t=e.changedTouches[i];if(t.identifier===joyId)setStick(t)}},{passive:false});
+function releaseJoy(e){for(let i=0;i<e.changedTouches.length;i++){let t=e.changedTouches[i];if(t.identifier===joyId){joyId=null;joyX=joyY=0;stick.style.transform='translate(0,0)'}}}
+stickBase.addEventListener('touchend',releaseJoy);stickBase.addEventListener('touchcancel',releaseJoy);
+const turnBase=document.getElementById('turnBase'),turnStick=document.getElementById('turnStick');
+function setTurn(t){
+ const r=turnBase.getBoundingClientRect(),cx=r.left+r.width/2;
+ let dx=t.clientX-cx,dy=t.clientY-(r.top+r.height/2),len=Math.hypot(dx,dy),max=38;
+ if(len>max){dx=dx/len*max;dy=dy/len*max}
+ turnX=dx/max;
+ turnStick.style.transform=`translate(${dx}px,${dy}px)`;
+}
+turnBase.addEventListener('touchstart',e=>{e.preventDefault();if(turnId===null){let t=e.changedTouches[0];turnId=t.identifier;setTurn(t)}},{passive:false});
+turnBase.addEventListener('mousedown',e=>{turnId='mouse';setTurn(e)});
+window.addEventListener('mousemove',e=>{if(turnId==='mouse')setTurn(e)});
+window.addEventListener('mouseup',()=>{if(turnId==='mouse'){turnId=null;turnX=0;turnStick.style.transform='translate(0,0)'}});
+turnBase.addEventListener('touchmove',e=>{e.preventDefault();for(let i=0;i<e.changedTouches.length;i++){let t=e.changedTouches[i];if(t.identifier===turnId)setTurn(t)}},{passive:false});
+function releaseTurn(e){for(let i=0;i<e.changedTouches.length;i++){let t=e.changedTouches[i];if(t.identifier===turnId){turnId=null;turnX=0;turnStick.style.transform='translate(0,0)'}}}
+turnBase.addEventListener('touchend',releaseTurn);turnBase.addEventListener('touchcancel',releaseTurn);
+document.addEventListener('touchstart',function(){document.getElementById('mobile').style.display='block';},{once:true,passive:true});
+document.addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyM'){mapOn=!mapOn;mapCanvas.style.display=mapOn?'block':'none'}if(e.code==='Escape'&&running&&!dead&&!won){paused=true;prompt.textContent='PAUSED — CLICK TO RETURN';}});
+document.addEventListener('keyup',e=>keys[e.code]=false);
+let touchTapCount=0;canvas.addEventListener('touchstart',e=>{if(e.touches.length>=2){mapOn=!mapOn;mapCanvas.style.display=mapOn?'block':'none'}},{passive:true});
+canvas.addEventListener('click',()=>{if(running&&!dead&&!won&&!('ontouchstart' in window))if(canvas.requestPointerLock)canvas.requestPointerLock()});
+reset();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
